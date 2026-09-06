@@ -1,4 +1,3 @@
-```python
 import asyncio
 import re
 import ast
@@ -43,19 +42,61 @@ dp = Dispatcher()
 # ============================================================
 
 async def get_ton_price():
-    timeout = aiohttp.ClientTimeout(total=10)
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(COINGECKO_URL) as response:
+    timeout = aiohttp.ClientTimeout(total=15)
 
-            if response.status != 200:
+    for attempt in range(3):
+
+        try:
+
+            async with aiohttp.ClientSession(
+                timeout=timeout
+            ) as session:
+
+                async with session.get(
+                    COINGECKO_URL,
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": "TON-Calculator-Bot/1.0"
+                    }
+                ) as response:
+
+                    if response.status == 429:
+                        if attempt < 2:
+                            await asyncio.sleep(2 ** attempt)
+                            continue
+
+                        raise Exception(
+                            "CoinGecko rate limit reached"
+                        )
+
+                    if response.status != 200:
+                        raise Exception(
+                            f"CoinGecko returned HTTP {response.status}"
+                        )
+
+                    data = await response.json()
+
+                    price = data["the-open-network"]["usd"]
+
+                    return float(price)
+
+        except (
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            KeyError,
+            TypeError,
+            ValueError
+        ) as error:
+
+            if attempt == 2:
                 raise Exception(
-                    f"CoinGecko returned HTTP {response.status}"
+                    f"Unable to get TON price: {error}"
                 )
 
-            data = await response.json()
+            await asyncio.sleep(2 ** attempt)
 
-            return float(data["the-open-network"]["usd"])
+    raise Exception("Unable to get TON price")
 
 
 # ============================================================
@@ -63,37 +104,69 @@ async def get_ton_price():
 # ============================================================
 
 async def get_cbu_rates():
-    timeout = aiohttp.ClientTimeout(total=10)
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(CBU_URL) as response:
+    timeout = aiohttp.ClientTimeout(total=15)
 
-            if response.status != 200:
+    for attempt in range(3):
+
+        try:
+
+            async with aiohttp.ClientSession(
+                timeout=timeout
+            ) as session:
+
+                async with session.get(
+                    CBU_URL,
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": "TON-Calculator-Bot/1.0"
+                    }
+                ) as response:
+
+                    if response.status != 200:
+                        raise Exception(
+                            f"CBU returned HTTP {response.status}"
+                        )
+
+                    data = await response.json()
+
+            usd_rate = None
+            rub_rate = None
+
+            for currency in data:
+
+                code = currency.get("Ccy")
+
+                if code == "USD":
+                    usd_rate = float(currency["Rate"])
+
+                elif code == "RUB":
+                    rub_rate = float(currency["Rate"])
+
+            if usd_rate is None:
+                raise Exception("USD rate not found")
+
+            if rub_rate is None:
+                raise Exception("RUB rate not found")
+
+            return usd_rate, rub_rate
+
+        except (
+            aiohttp.ClientError,
+            asyncio.TimeoutError,
+            KeyError,
+            TypeError,
+            ValueError
+        ) as error:
+
+            if attempt == 2:
                 raise Exception(
-                    f"CBU returned HTTP {response.status}"
+                    f"Unable to get CBU rates: {error}"
                 )
 
-            data = await response.json()
+            await asyncio.sleep(2 ** attempt)
 
-    usd_rate = None
-    rub_rate = None
-
-    for currency in data:
-        code = currency.get("Ccy")
-
-        if code == "USD":
-            usd_rate = float(currency["Rate"])
-
-        elif code == "RUB":
-            rub_rate = float(currency["Rate"])
-
-    if usd_rate is None:
-        raise Exception("USD rate not found")
-
-    if rub_rate is None:
-        raise Exception("RUB rate not found")
-
-    return usd_rate, rub_rate
+    raise Exception("Unable to get CBU rates")
 
 
 # ============================================================
@@ -101,6 +174,7 @@ async def get_cbu_rates():
 # ============================================================
 
 def format_uzs(value):
+
     return f"{value:,.0f}".replace(",", " ")
 
 
@@ -109,6 +183,7 @@ def format_uzs(value):
 # ============================================================
 
 def format_money(value):
+
     return f"{value:,.2f}"
 
 
@@ -118,9 +193,12 @@ def format_money(value):
 
 async def calculate(amount):
 
-    ton_usd = await get_ton_price()
+    ton_usd, rates = await asyncio.gather(
+        get_ton_price(),
+        get_cbu_rates()
+    )
 
-    usd_uzs, rub_uzs = await get_cbu_rates()
+    usd_uzs, rub_uzs = rates
 
     # TON → USD
     total_usd = amount * ton_usd
@@ -132,10 +210,13 @@ async def calculate(amount):
     total_rub = total_uzs / rub_uzs
 
     # +3% recommended selling price
-    selling_price = total_uzs * (1 + SELL_MARGIN / 100)
+    selling_price = total_uzs * (
+        1 + SELL_MARGIN / 100
+    )
 
     return {
         "amount": amount,
+        "ton_usd": ton_usd,
         "total_usd": total_usd,
         "total_uzs": total_uzs,
         "total_rub": total_rub,
@@ -190,7 +271,8 @@ def safe_calculate(expression):
     # --------------------------------------------------------
 
     percent_match = re.fullmatch(
-        r"(-?\d+(?:\.\d+)?)\s*([+-])\s*(\d+(?:\.\d+)?)%",
+        r"(-?\d+(?:\.\d+)?)\s*([+-])\s*"
+        r"(\d+(?:\.\d+)?)%",
         expression
     )
 
@@ -204,8 +286,8 @@ def safe_calculate(expression):
 
         if sign == "+":
             return number + percentage_value
-        else:
-            return number - percentage_value
+
+        return number - percentage_value
 
     # --------------------------------------------------------
     # NORMAL CALCULATOR
@@ -219,7 +301,8 @@ def safe_calculate(expression):
             return calculate_node(node.body)
 
         if isinstance(node, ast.Constant) and isinstance(
-            node.value, (int, float)
+            node.value,
+            (int, float)
         ):
             return node.value
 
@@ -232,8 +315,9 @@ def safe_calculate(expression):
             right = calculate_node(node.right)
 
             # Prevent extremely large powers
-            if isinstance(node.op, ast.Pow) and abs(right) > 100:
-                raise ValueError("Power too large")
+            if isinstance(node.op, ast.Pow):
+                if abs(right) > 100:
+                    raise ValueError("Power too large")
 
             return ALLOWED_OPERATORS[type(node.op)](
                 left,
@@ -264,9 +348,11 @@ def safe_calculate(expression):
 def format_calculator_result(result):
 
     if isinstance(result, float) and result.is_integer():
+
         return f"{int(result):,}".replace(",", " ")
 
     if isinstance(result, float):
+
         return (
             f"{result:,.10f}"
             .rstrip("0")
@@ -281,7 +367,11 @@ def format_calculator_result(result):
 # REPLY HELPER
 # ============================================================
 
-async def send_reply(message: Message, text: str, parse_mode=None):
+async def send_reply(
+    message: Message,
+    text: str,
+    parse_mode=None
+):
 
     await message.reply(
         text,
@@ -304,7 +394,8 @@ async def start_handler(message: Message):
         "`2 TON`\n"
         "`12.5 TON`\n"
         "`45 TON`\n"
-        "`100 TON`",
+        "`100 TON`\n\n"
+        "Yoki shunchaki `45` yuboring.",
         parse_mode="Markdown"
     )
 
@@ -313,7 +404,10 @@ async def start_handler(message: Message):
 # PROCESS TON
 # ============================================================
 
-async def process_ton(message: Message, amount: float):
+async def process_ton(
+    message: Message,
+    amount: float
+):
 
     loading = await message.reply(
         "⏳ Kurslar olinmoqda..."
@@ -333,7 +427,8 @@ async def process_ton(message: Message, amount: float):
         print(f"ERROR: {error}")
 
         await loading.edit_text(
-            "❌ Kurslarni olishda xatolik yuz berdi.\n"
+            "❌ Kurslarni olishda xatolik yuz berdi.\n\n"
+            "Kurs serverlari vaqtincha javob bermayapti.\n"
             "Birozdan keyin qayta urinib ko'ring."
         )
 
@@ -351,18 +446,87 @@ async def message_handler(message: Message):
     text = message.text.strip()
 
     # ========================================================
-    # 1. CALCULATOR
+    # 1. /ton 45
     # ========================================================
 
+    command_match = re.fullmatch(
+        r"/ton(?:@\w+)?\s+"
+        r"([0-9]+(?:[.,][0-9]+)?)",
+        text,
+        re.IGNORECASE
+    )
+
+    if command_match:
+
+        try:
+
+            amount = float(
+                command_match.group(1).replace(",", ".")
+            )
+
+            if amount <= 0:
+                return
+
+        except ValueError:
+            return
+
+        await process_ton(message, amount)
+
+        return
+
+    # ========================================================
+    # 2. TON AMOUNT
+    # ========================================================
+    # Examples:
+    # 45
+    # 45 TON
+    # 12.5 TON
+    # 12,5 TON
+    # ========================================================
+
+    amount_match = re.fullmatch(
+        r"([0-9]+(?:[.,][0-9]+)?)"
+        r"\s*(?:ton)?",
+        text,
+        re.IGNORECASE
+    )
+
+    if amount_match:
+
+        try:
+
+            amount = float(
+                amount_match.group(1).replace(",", ".")
+            )
+
+            if amount <= 0:
+                return
+
+        except ValueError:
+            return
+
+        await process_ton(message, amount)
+
+        return
+
+    # ========================================================
+    # 3. CALCULATOR
+    # ========================================================
+    # Calculator must contain an actual operator.
+    #
     # Examples:
     # 25 + 35
     # 1000 / 5
     # 2.5 * 4
     # 1000 + 15%
     # 1000 - 15%
+    # ========================================================
 
     if re.fullmatch(
         r"[-+*/().%\d\s,]+",
+        text
+    ) and re.search(
+        r"[+\-*/%]",
         text
     ):
 
@@ -373,7 +537,8 @@ async def message_handler(message: Message):
             await send_reply(
                 message,
                 f"🧮 **Calculator**\n\n"
-                f"`{text}` = **{format_calculator_result(result)}**",
+                f"`{text}` = "
+                f"**{format_calculator_result(result)}**",
                 parse_mode="Markdown"
             )
 
@@ -387,45 +552,6 @@ async def message_handler(message: Message):
             OverflowError
         ):
             pass
-
-    # ========================================================
-    # 2. /ton 45
-    # ========================================================
-
-    command_match = re.fullmatch(
-        r"/ton(?:@\w+)?\s+([0-9]+(?:[.,][0-9]+)?)",
-        text,
-        re.IGNORECASE
-    )
-
-    # ========================================================
-    # 3. 45 TON / 45 ton / 45
-    # ========================================================
-
-    amount_match = re.fullmatch(
-        r"([0-9]+(?:[.,][0-9]+)?)\s*(?:ton)?",
-        text,
-        re.IGNORECASE
-    )
-
-    match = command_match or amount_match
-
-    if not match:
-        return
-
-    try:
-
-        amount = float(
-            match.group(1).replace(",", ".")
-        )
-
-        if amount <= 0:
-            return
-
-    except ValueError:
-        return
-
-    await process_ton(message, amount)
 
 
 # ============================================================
@@ -441,4 +567,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-```
