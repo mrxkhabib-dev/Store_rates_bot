@@ -1,6 +1,9 @@
+```python
 import asyncio
 import re
-from pathlib import Path
+import ast
+import operator
+import os
 
 import aiohttp
 from aiogram import Bot, Dispatcher
@@ -26,10 +29,6 @@ CBU_URL = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/"
 # TELEGRAM TOKEN
 # ============================================================
 
-# TELEGRAM TOKEN
-
-import os
-
 TOKEN = os.getenv("BOT_TOKEN")
 
 if not TOKEN:
@@ -37,7 +36,6 @@ if not TOKEN:
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
 
 
 # ============================================================
@@ -115,7 +113,7 @@ def format_money(value):
 
 
 # ============================================================
-# CALCULATE
+# TON CALCULATE
 # ============================================================
 
 async def calculate(amount):
@@ -147,7 +145,7 @@ async def calculate(amount):
 
 
 # ============================================================
-# FORMAT RESULT
+# FORMAT TON RESULT
 # ============================================================
 
 def format_result(data):
@@ -155,15 +153,139 @@ def format_result(data):
     amount = f"{data['amount']:g}"
 
     return (
-    f"💠 **{amount} TON joriy kursi:**\n\n"
-    f"💰 **{format_uzs(data['total_uzs'])} UZS**\n"
-    f"💲 **{format_money(data['total_usd'])} USD**\n"
-    f" ₽ **{format_money(data['total_rub'])} RUB**\n\n"
-    f"🏛️ **CBU USD kursi:** "
-    f"{format_uzs(data['usd_uzs'])} UZS\n"
-    f"📊 **Sotish uchun:** "
-    f"{format_uzs(data['selling_price'])} UZS "
-    f"(+{SELL_MARGIN:g}%)"
+        f"💠 **{amount} TON joriy kursi:**\n\n"
+        f"💰 **{format_uzs(data['total_uzs'])} UZS**\n"
+        f"💲 **{format_money(data['total_usd'])} USD**\n"
+        f"₽ **{format_money(data['total_rub'])} RUB**\n\n"
+        f"🏛️ **CBU USD kursi:** "
+        f"{format_uzs(data['usd_uzs'])} UZS\n"
+        f"📊 **Sotish uchun:** "
+        f"{format_uzs(data['selling_price'])} UZS "
+        f"(+{SELL_MARGIN:g}%)"
+    )
+
+
+# ============================================================
+# SAFE CALCULATOR
+# ============================================================
+
+ALLOWED_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+}
+
+
+def safe_calculate(expression):
+
+    expression = expression.replace(",", ".").strip()
+
+    # --------------------------------------------------------
+    # PERCENTAGE
+    # 1000 + 15% = 1150
+    # 1000 - 15% = 850
+    # --------------------------------------------------------
+
+    percent_match = re.fullmatch(
+        r"(-?\d+(?:\.\d+)?)\s*([+-])\s*(\d+(?:\.\d+)?)%",
+        expression
+    )
+
+    if percent_match:
+
+        number = float(percent_match.group(1))
+        sign = percent_match.group(2)
+        percent = float(percent_match.group(3))
+
+        percentage_value = number * percent / 100
+
+        if sign == "+":
+            return number + percentage_value
+        else:
+            return number - percentage_value
+
+    # --------------------------------------------------------
+    # NORMAL CALCULATOR
+    # --------------------------------------------------------
+
+    tree = ast.parse(expression, mode="eval")
+
+    def calculate_node(node):
+
+        if isinstance(node, ast.Expression):
+            return calculate_node(node.body)
+
+        if isinstance(node, ast.Constant) and isinstance(
+            node.value, (int, float)
+        ):
+            return node.value
+
+        if isinstance(node, ast.BinOp):
+
+            if type(node.op) not in ALLOWED_OPERATORS:
+                raise ValueError("Operator not allowed")
+
+            left = calculate_node(node.left)
+            right = calculate_node(node.right)
+
+            # Prevent extremely large powers
+            if isinstance(node.op, ast.Pow) and abs(right) > 100:
+                raise ValueError("Power too large")
+
+            return ALLOWED_OPERATORS[type(node.op)](
+                left,
+                right
+            )
+
+        if isinstance(node, ast.UnaryOp) and isinstance(
+            node.op,
+            (ast.UAdd, ast.USub)
+        ):
+
+            value = calculate_node(node.operand)
+
+            if isinstance(node.op, ast.USub):
+                return -value
+
+            return value
+
+        raise ValueError("Invalid expression")
+
+    return calculate_node(tree)
+
+
+# ============================================================
+# FORMAT CALCULATOR RESULT
+# ============================================================
+
+def format_calculator_result(result):
+
+    if isinstance(result, float) and result.is_integer():
+        return f"{int(result):,}".replace(",", " ")
+
+    if isinstance(result, float):
+        return (
+            f"{result:,.10f}"
+            .rstrip("0")
+            .rstrip(".")
+            .replace(",", " ")
+        )
+
+    return f"{result:,}".replace(",", " ")
+
+
+# ============================================================
+# REPLY HELPER
+# ============================================================
+
+async def send_reply(message: Message, text: str, parse_mode=None):
+
+    await message.reply(
+        text,
+        parse_mode=parse_mode
     )
 
 
@@ -174,7 +296,8 @@ def format_result(data):
 @dp.message(CommandStart())
 async def start_handler(message: Message):
 
-    await message.answer(
+    await send_reply(
+        message,
         "💎 **TON Calculator Bot**\n\n"
         "TON miqdorini yuboring.\n\n"
         "Masalan:\n"
@@ -192,7 +315,9 @@ async def start_handler(message: Message):
 
 async def process_ton(message: Message, amount: float):
 
-    loading = await message.answer("⏳ Kurslar olinmoqda...")
+    loading = await message.reply(
+        "⏳ Kurslar olinmoqda..."
+    )
 
     try:
 
@@ -214,7 +339,7 @@ async def process_ton(message: Message, amount: float):
 
 
 # ============================================================
-# /TON COMMAND
+# MAIN MESSAGE HANDLER
 # ============================================================
 
 @dp.message()
@@ -225,14 +350,58 @@ async def message_handler(message: Message):
 
     text = message.text.strip()
 
-    # /ton 45
+    # ========================================================
+    # 1. CALCULATOR
+    # ========================================================
+
+    # Examples:
+    # 25 + 35
+    # 1000 / 5
+    # 2.5 * 4
+    # 1000 + 15%
+    # 1000 - 15%
+
+    if re.fullmatch(
+        r"[-+*/().%\d\s,]+",
+        text
+    ):
+
+        try:
+
+            result = safe_calculate(text)
+
+            await send_reply(
+                message,
+                f"🧮 **Calculator**\n\n"
+                f"`{text}` = **{format_calculator_result(result)}**",
+                parse_mode="Markdown"
+            )
+
+            return
+
+        except (
+            ValueError,
+            SyntaxError,
+            ZeroDivisionError,
+            TypeError,
+            OverflowError
+        ):
+            pass
+
+    # ========================================================
+    # 2. /ton 45
+    # ========================================================
+
     command_match = re.fullmatch(
         r"/ton(?:@\w+)?\s+([0-9]+(?:[.,][0-9]+)?)",
         text,
         re.IGNORECASE
     )
 
-    # 45 TON / 45 ton / 45
+    # ========================================================
+    # 3. 45 TON / 45 ton / 45
+    # ========================================================
+
     amount_match = re.fullmatch(
         r"([0-9]+(?:[.,][0-9]+)?)\s*(?:ton)?",
         text,
@@ -246,7 +415,9 @@ async def message_handler(message: Message):
 
     try:
 
-        amount = float(match.group(1).replace(",", "."))
+        amount = float(
+            match.group(1).replace(",", ".")
+        )
 
         if amount <= 0:
             return
@@ -270,3 +441,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
