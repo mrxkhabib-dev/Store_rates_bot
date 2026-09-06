@@ -26,24 +26,18 @@ CBU_URL = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/"
 # TELEGRAM TOKEN
 # ============================================================
 
-env_file = Path(__file__).parent / ".env"
+# TELEGRAM TOKEN
 
-token = ""
+import os
 
-with open(env_file, "r", encoding="utf-8") as file:
-    for line in file:
-        line = line.strip()
+TOKEN = os.getenv("BOT_TOKEN")
 
-        if line.startswith("BOT_TOKEN="):
-            token = line.split("=", 1)[1].strip()
-            break
+if not TOKEN:
+    raise ValueError("BOT_TOKEN environment variable was not found")
 
-if not token:
-    raise ValueError("BOT_TOKEN was not found in .env")
-
-
-bot = Bot(token=token)
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
 
 
 # ============================================================
