@@ -142,5 +142,88 @@ def safe_calculate(expression):
                 raise ValueError("Operator not allowed")
             left = calculate_node(node.left)
             right = calculate_node(node.right)
-            return ALLOWED_OPERATORS
-            
+            return ALLOWED_OPERATORS[type(node.op)](left, right)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            value = calculate_node(node.operand)
+            if isinstance(node.op, ast.USub):
+                return -value
+            return value
+        raise ValueError("Invalid expression")
+    return calculate_node(tree)
+
+
+def format_calculator_result(result):
+    if isinstance(result, float) and result.is_integer():
+        return f"{int(result):,}".replace(",", " ")
+    if isinstance(result, float):
+        return (f"{result:,.10f}".rstrip("0").rstrip(".").replace(",", " "))
+    return f"{result:,}".replace(",", " ")
+
+
+# ============================================================
+# REPLY HELPER
+# ============================================================
+
+async def send_reply(message: Message, text: str, parse_mode=None):
+    await message.reply(text, parse_mode=parse_mode)
+
+
+# ============================================================
+# /START
+# ============================================================
+
+@dp.message(CommandStart())
+async def start_handler(message: Message):
+    await send_reply(
+        message,
+        "💎 **TON Calculator Bot**\n\n"
+        "TON miqdorini yuboring.\n\n"
+        "Masalan:\n"
+        "`2 TON`\n"
+        "`12.5 TON`\n"
+        "`45 TON`\n"
+        "`100 TON`\n\n"
+        "Faqat `TON` bilan yuboring.",
+        parse_mode="Markdown"
+    )
+
+
+# ============================================================
+# MAIN MESSAGE HANDLER
+# ============================================================
+
+@dp.message()
+async def message_handler(message: Message):
+    if not message.text:
+        return
+    text = message.text.strip()
+
+    # TON amount
+    amount_match = re.fullmatch(r"([0-9]+(?:[.,][0-9]+)?)\s*ton", text, re.IGNORECASE)
+    if amount_match:
+        amount = float(amount_match.group(1).replace(",", "."))
+        if amount > 0:
+            result = await calculate(amount)
+            await send_reply(message, format_result(result), parse_mode="Markdown")
+        return
+
+    # Calculator
+    if re.fullmatch(r"[-+*/().%\d\s,]+", text) and re.search(r"[+\-*/%]", text):
+        try:
+            result = safe_calculate(text)
+            await send_reply(message, format_calculator_result(result))
+        except Exception:
+            await send_reply(message, "❌ Invalid calculation.")
+
+
+# ============================================================
+# MAIN ENTRY POINT
+# ============================================================
+
+async def main():
+    print("🤖 TON Calculator Bot is starting...")
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
