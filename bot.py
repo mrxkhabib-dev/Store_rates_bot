@@ -279,3 +279,14 @@ async def stats_handler(message: Message):
         f"Current SELL_MARGIN: {SELL_MARGIN}%\n"
         f"Last check: {now}",
         parse
+    )
+# ============================================================
+# MAIN ENTRY POINT
+# ============================================================
+
+async def main():
+    print("🤖 TON Calculator Bot is starting...")
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
