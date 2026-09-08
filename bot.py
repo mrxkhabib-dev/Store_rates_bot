@@ -42,7 +42,7 @@ dp = Dispatcher()
 # ADMIN SETTINGS
 # ============================================================
 
-ADMIN_ID = 123456789  # replace with your Telegram ID
+ADMIN_ID = 5384520293  # replace with your Telegram ID
 
 
 # ============================================================
