@@ -11,6 +11,66 @@ from aiogram.types import Message
 
 
 # ============================================================
+# ADMIN SETTINGS
+# ============================================================
+
+ADMIN_ID = 5384520293  # replace with your Telegram ID
+
+# ============================================================
+# /START
+# ============================================================
+
+@dp.message(CommandStart())
+async def start_handler(message: Message):
+    await send_reply(
+        message,
+        "💎 **TON Calculator Bot**\n\n"
+        "TON miqdorini yuboring.\n\n"
+        "Masalan:\n"
+        "`2 TON`\n"
+        "`12.5 TON`\n"
+        "`45 TON`\n"
+        "`100 TON`\n\n"
+        "Faqat `TON` bilan yuboring.",
+        parse_mode="Markdown"
+    )
+
+
+# ============================================================
+# ADMIN COMMANDS
+# ============================================================
+
+from datetime import datetime
+
+# /setmargin <value>
+@dp.message(commands=["setmargin"])
+async def set_margin(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return await message.reply("❌ You are not authorized.")
+
+    try:
+        global SELL_MARGIN
+        SELL_MARGIN = float(message.text.split()[1])
+        await message.reply(f"✅ SELL_MARGIN updated to {SELL_MARGIN}%")
+    except Exception:
+        await message.reply("❌ Invalid format. Use: /setmargin 5")
+
+
+# /stats
+@dp.message(commands=["stats"])
+async def stats_handler(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return await message.reply("❌ You are not authorized.")
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    await message.reply(
+        f"📊 **Bot Stats**\n\n"
+        f"Current SELL_MARGIN: {SELL_MARGIN}%\n"
+        f"Last check: {now}",
+        parse_mode="Markdown"
+    )
+
+# ============================================================
 # SETTINGS
 # ============================================================
 
