@@ -213,7 +213,7 @@ async def message_handler(message: Message):
             result = safe_calculate(text)
             await send_reply(message, format_calculator_result(result))
         except Exception:
-            await send_reply(message, "❌ Invalid calculation.")
+            return  # silently ignore invalid calculations
 
 
 # ============================================================
@@ -226,4 +226,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
