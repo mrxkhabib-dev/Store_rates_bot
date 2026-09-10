@@ -226,3 +226,15 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+import logging
+logging.basicConfig(level=logging.INFO)
+
+@bot.message_handler(func=lambda m: True)
+def handle_message(message):
+    try:
+        rates = get_rates(message.text)   # API call
+        logging.info("Rates response: %s", rates)
+        bot.reply_to(message, format_rates(rates))
+    except Exception as e:
+        logging.error("Error in handle_message: %s", e)
+        bot.reply_to(message, "⚠️ Bot error, please try again later.")
