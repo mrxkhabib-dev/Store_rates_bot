@@ -85,6 +85,7 @@ def safe_calculate(expression):
     # Normalize symbols
     expression = expression.replace(",", ".").strip()
     expression = expression.replace("×", "*")  # Treat × as *
+    expression = expression.replace("÷", "/")  # (optional) Treat ÷ as /
 
     tree = ast.parse(expression, mode="eval")
 
