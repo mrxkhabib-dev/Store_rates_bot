@@ -156,7 +156,7 @@ async def message_handler(message: Message):
         return
 
     # Calculator
-    if re.fullmatch(r"[-+*/().%\d\s,]+", text) and re.search(r"[+\-*/%]", text):
+  if re.fullmatch(r"[-+*/×÷().%\d\s,]+", text) and re.search(r"[+\-*/×÷%]", text):
         try:
             result = safe_calculate(text)
             await send_reply(message, format_calculator_result(result))
