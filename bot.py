@@ -126,6 +126,10 @@ async def message_handler(message: Message):
     if not message.text: return
     text = message.text.strip()
 
+    # Ignore single operator inputs (+, -, *, /)
+    if text in {"+", "-", "*", "/"}:
+        return  # Silent ignore
+
     # TON amount
     amount_match = re.fullmatch(r"([0-9]+(?:[.,][0-9]+)?)\s*ton", text, re.IGNORECASE)
     if amount_match:
@@ -146,7 +150,8 @@ async def message_handler(message: Message):
             await send_reply(message, format_calculator_result(result))
         except Exception as e:
             logging.error("Calc error: %s", e)
-            await send_reply(message, "❌ Invalid calculation.")
+            # Silent ignore instead of sending "Invalid calculation"
+            return
 
 async def main():
     print("🤖 TON Calculator Bot is starting...")
