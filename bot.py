@@ -85,7 +85,7 @@ def safe_calculate(expression):
     # Normalize symbols
     expression = expression.replace(",", ".").strip()
     expression = expression.replace("×", "*")  # Treat × as *
-    expression = expression.replace("÷", "/")  # (optional) Treat ÷ as /
+    expression = expression.replace("÷", "/")  # Treat ÷ as /
 
     tree = ast.parse(expression, mode="eval")
 
@@ -106,7 +106,6 @@ def safe_calculate(expression):
         raise ValueError("Invalid expression")
 
     return calculate_node(tree)
-
 
 def format_calculator_result(result):
     if isinstance(result, float) and result.is_integer():
@@ -138,8 +137,8 @@ async def message_handler(message: Message):
     if not message.text: return
     text = message.text.strip()
 
-    # Ignore single operator inputs (+, -, *, /)
-    if text in {"+", "-", "*", "/"}:
+    # Ignore single operator inputs (+, -, *, /, ×, ÷)
+    if text in {"+", "-", "*", "/", "×", "÷"}:
         return  # Silent ignore
 
     # TON amount
@@ -155,8 +154,8 @@ async def message_handler(message: Message):
             await send_reply(message, "⚠️ Error calculating TON.")
         return
 
-    # Calculator
-  if re.fullmatch(r"[-+*/×÷().%\d\s,]+", text) and re.search(r"[+\-*/×÷%]", text):
+    # Calculator (expanded regex to allow × and ÷)
+    if re.fullmatch(r"[-+*/×÷().%\d\s,]+", text) and re.search(r"[+\-*/×÷%]", text):
         try:
             result = safe_calculate(text)
             await send_reply(message, format_calculator_result(result))
