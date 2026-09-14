@@ -82,19 +82,30 @@ ALLOWED_OPERATORS = {
 }
 
 def safe_calculate(expression):
+    # Normalize symbols
     expression = expression.replace(",", ".").strip()
+    expression = expression.replace("×", "*")  # Treat × as *
+
     tree = ast.parse(expression, mode="eval")
+
     def calculate_node(node):
-        if isinstance(node, ast.Expression): return calculate_node(node.body)
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)): return node.value
+        if isinstance(node, ast.Expression):
+            return calculate_node(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
         if isinstance(node, ast.BinOp):
-            if type(node.op) not in ALLOWED_OPERATORS: raise ValueError("Operator not allowed")
-            return ALLOWED_OPERATORS[type(node.op)](calculate_node(node.left), calculate_node(node.right))
+            if type(node.op) not in ALLOWED_OPERATORS:
+                raise ValueError("Operator not allowed")
+            return ALLOWED_OPERATORS[type(node.op)](
+                calculate_node(node.left), calculate_node(node.right)
+            )
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             val = calculate_node(node.operand)
             return -val if isinstance(node.op, ast.USub) else val
         raise ValueError("Invalid expression")
+
     return calculate_node(tree)
+
 
 def format_calculator_result(result):
     if isinstance(result, float) and result.is_integer():
