@@ -21,15 +21,21 @@ COINGECKO_URL = (
 CBU_URL = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/"
 
 TOKEN = os.getenv("BOT_TOKEN")
+
 if not TOKEN:
     raise ValueError("BOT_TOKEN environment variable was not found")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+
 async def get_ton_price():
     async with aiohttp.ClientSession() as session:
-        async with session.get(COINGECKO_URL) as response:
+        async with session.get(COINGECKO_URL, timeout=10) as response:
+
+            if response.status != 200:
+                raise Exception(f"CoinGecko HTTP Error: {response.status}")
+
             data = await response.json()
 
             logging.info(f"CoinGecko response: {data}")
@@ -37,24 +43,34 @@ async def get_ton_price():
             ton_price = data.get("the-open-network", {}).get("usd")
 
             if ton_price is None:
-                raise Exception(f"TON price missing: {data}")
+                raise Exception("TON price unavailable")
 
             return float(ton_price)
-            
+
+
 async def get_cbu_rates():
     async with aiohttp.ClientSession() as session:
-        async with session.get(CBU_URL) as response:
+        async with session.get(CBU_URL, timeout=10) as response:
+
+            if response.status != 200:
+                raise Exception(f"CBU HTTP Error: {response.status}")
+
             data = await response.json()
 
-    usd_rate = rub_rate = None
+    usd_rate = None
+    rub_rate = None
 
     for currency in data:
         code = currency.get("Ccy")
 
         if code == "USD":
             usd_rate = float(currency["Rate"])
+
         elif code == "RUB":
             rub_rate = float(currency["Rate"])
+
+    if usd_rate is None or rub_rate is None:
+        raise Exception("CBU rates not found")
 
     return usd_rate, rub_rate
 
