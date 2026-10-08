@@ -29,23 +29,33 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 
-async def get_ton_price():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(COINGECKO_URL, timeout=10) as response:
+cached_ton_price = None
+last_update = 0
 
-            if response.status != 200:
-                raise Exception(f"CoinGecko HTTP Error: {response.status}")
+async def get_ton_price():
+    global cached_ton_price, last_update
+
+    import time
+
+    if cached_ton_price and time.time() - last_update < 60:
+        return cached_ton_price
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(COINGECKO_URL) as response:
+
+            if response.status == 429:
+                if cached_ton_price:
+                    return cached_ton_price
+                raise Exception("CoinGecko rate limit reached")
 
             data = await response.json()
 
-            logging.info(f"CoinGecko response: {data}")
+            ton_price = float(data["the-open-network"]["usd"])
 
-            ton_price = data.get("the-open-network", {}).get("usd")
+            cached_ton_price = ton_price
+            last_update = time.time()
 
-            if ton_price is None:
-                raise Exception("TON price unavailable")
-
-            return float(ton_price)
+            return ton_price
 
 
 async def get_cbu_rates():
