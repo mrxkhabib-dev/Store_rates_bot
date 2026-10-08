@@ -12,10 +12,12 @@ from aiogram.types import Message
 logging.basicConfig(level=logging.INFO)
 
 SELL_MARGIN = 3.0
+
 COINGECKO_URL = (
     "https://api.coingecko.com/api/v3/simple/price"
     "?ids=the-open-network&vs_currencies=usd"
 )
+
 CBU_URL = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/"
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -29,19 +31,30 @@ async def get_ton_price():
     async with aiohttp.ClientSession() as session:
         async with session.get(COINGECKO_URL) as response:
             data = await response.json()
-            return float(data["the-open-network"]["usd"])
+
+            ton_price = data.get("the-open-network", {}).get("usd")
+
+            if ton_price is None:
+                logging.error(f"CoinGecko response: {data}")
+                raise Exception("TON price not found")
+
+            return float(ton_price)
 
 async def get_cbu_rates():
     async with aiohttp.ClientSession() as session:
         async with session.get(CBU_URL) as response:
             data = await response.json()
+
     usd_rate = rub_rate = None
+
     for currency in data:
         code = currency.get("Ccy")
+
         if code == "USD":
             usd_rate = float(currency["Rate"])
         elif code == "RUB":
             rub_rate = float(currency["Rate"])
+
     return usd_rate, rub_rate
 
 def format_uzs(value): return f"{value:,.0f}".replace(",", " ")
