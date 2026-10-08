@@ -32,14 +32,15 @@ async def get_ton_price():
         async with session.get(COINGECKO_URL) as response:
             data = await response.json()
 
+            logging.info(f"CoinGecko response: {data}")
+
             ton_price = data.get("the-open-network", {}).get("usd")
 
             if ton_price is None:
-                logging.error(f"CoinGecko response: {data}")
-                raise Exception("TON price not found")
+                raise Exception(f"TON price missing: {data}")
 
             return float(ton_price)
-
+            
 async def get_cbu_rates():
     async with aiohttp.ClientSession() as session:
         async with session.get(CBU_URL) as response:
